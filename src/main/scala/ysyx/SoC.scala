@@ -1,10 +1,9 @@
 package ysyx
 
 import chisel3._
-import chisel3.util._
 
 import freechips.rocketchip.diplomacy._
-import freechips.rocketchip.config.{Field, Parameters}
+import freechips.rocketchip.config.Parameters
 import freechips.rocketchip.subsystem._
 import freechips.rocketchip.util._
 import freechips.rocketchip.amba.axi4._
@@ -30,14 +29,29 @@ class ysyxSoCASIC(implicit p: Parameters) extends LazyModule {
   val cpu = LazyModule(new CPU(idBits = ChipLinkParam.idBits))
   val chiplinkNode = AXI4SlaveNodeGenerator(p(ExtBus), ChipLinkParam.allSpace)
 
+  // ram
+  val sram0 = LazyModule(new RAM())
+  val sram1 = LazyModule(new RAM())
+  val sram2 = LazyModule(new RAM())
+  val sram3 = LazyModule(new RAM())
+  val sram4 = LazyModule(new RAM())
+  val sram5 = LazyModule(new RAM())
+  val sram6 = LazyModule(new RAM())
+  val sram7 = LazyModule(new RAM())
+
+
+  // peripheral
   val luart = LazyModule(new APBUart16550(AddressSet.misaligned(0x10000000, 0x1000)))
   val lspi  = LazyModule(new APBSPI(
     AddressSet.misaligned(0x10001000, 0x1000) ++    // SPI controller
     AddressSet.misaligned(0x30000000, 0x10000000)   // XIP flash
   ))
 
+  val lps2 = LazyModule(new AXI4PS2(AddressSet.misaligned(0x10003000, 0x1000)))
+
   List(lspi.node, luart.node).map(_ := apbxbar)
   List(chiplinkNode, apbxbar := AXI4ToAPB()).map(_ := xbar)
+  List(lps2.node).map(_ := xbar)
   xbar := cpu.masterNode
 
   override lazy val module = new LazyModuleImp(this) with DontTouch {
@@ -56,6 +70,16 @@ class ysyxSoCASIC(implicit p: Parameters) extends LazyModule {
     val intr_from_chipSlave = IO(Input(Bool()))
     cpu.module.interrupt := intr_from_chipSlave
 
+    // connet sram signal to cpu
+    cpu.module.sram0 <> sram0.module.io
+    cpu.module.sram1 <> sram1.module.io
+    cpu.module.sram2 <> sram2.module.io
+    cpu.module.sram3 <> sram3.module.io
+    cpu.module.sram4 <> sram4.module.io
+    cpu.module.sram5 <> sram5.module.io
+    cpu.module.sram6 <> sram6.module.io
+    cpu.module.sram7 <> sram7.module.io
+
     // expose chiplink fpga I/O interface as ports
     val fpga_io = IO(chiselTypeOf(chipMaster.module.fpga_io))
     fpga_io <> chipMaster.module.fpga_io
@@ -65,6 +89,10 @@ class ysyxSoCASIC(implicit p: Parameters) extends LazyModule {
     val uart = IO(chiselTypeOf(luart.module.uart))
     uart <> luart.module.uart
     spi <> lspi.module.spi_bundle
+
+    //expose ps2 and vga slave interface as ports
+    val ps2 = IO(chiselTypeOf(lps2.module.io))
+    ps2 <> lps2.module.io
   }
 }
 
@@ -94,10 +122,18 @@ class ysyxSoCFull(implicit p: Parameters) extends LazyModule {
     fpga.master_mmio.map(_.tieoff())
     fpga.slave.map(_.tieoff())
 
+    // dont test extern intr
     masic.intr_from_chipSlave := false.B
 
+    // spi flash
     val spiFlash = Module(new spiFlash)
     spiFlash.io <> masic.spi
     masic.uart.rx := false.B
+
+    // keyboard
+    val kdb = Module(new kdb)
+    kdb.io.ps2 <> masic.ps2
+    kdb.io.clock := clock
+    kdb.io.resetn := ~reset.asBool
   }
 }
