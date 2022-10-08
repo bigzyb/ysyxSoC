@@ -1,10 +1,8 @@
-#include <ctime>
-#include <iostream>
-#include <SDL2/SDL.h>
+#pragma once
 
-// screen res
-#define VGA_H_RES 640
-#define VGA_V_RES 480
+#include <iostream>
+
+#include <SDL2/SDL.h>
 
 // for SDL texture
 typedef struct Pixel
@@ -36,6 +34,16 @@ enum KdbCodeType
     K_MAKE = 0,
     K_BREAK,
 };
+
+// #define STD_RES
+#ifdef STD_RES
+// screen res
+#define VGA_H_RES 640
+#define VGA_V_RES 480
+#else
+#define VGA_H_RES 400
+#define VGA_V_RES 300
+#endif
 
 static KdbInfo keymap[] =
     {
@@ -293,216 +301,28 @@ static KdbInfo keymap[] =
         [SDL_SCANCODE_RGUI] = {0x27, K_EXTENDED},
 };
 
-// extern "C" void ps2_read(char dat);
-
 class MediaWindow
 {
 public:
-    MediaWindow()
-    {
-        if (SDL_Init(SDL_INIT_VIDEO) < 0)
-        {
-            std::cout << "SDL could not be initialized: " << SDL_GetError();
-        }
-        else
-        {
-            std::cout << "SDL video system is ready to go" << std::endl;
-        }
-
-        win = SDL_CreateWindow("PS/2 & VGA Test",
-                               SDL_WINDOWPOS_CENTERED,
-                               SDL_WINDOWPOS_CENTERED,
-                               VGA_H_RES,
-                               VGA_V_RES,
-                               SDL_WINDOW_SHOWN);
-
-        // NOTE:  need to handle excpt cond
-        if (!win)
-        {
-            printf("Window creation failed: %s\n", SDL_GetError());
-        }
-        rdr = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED);
-        if (!rdr)
-        {
-            printf("Renderer creation failed: %s\n", SDL_GetError());
-        }
-        txr = SDL_CreateTexture(rdr, SDL_PIXELFORMAT_RGBA8888,
-                                SDL_TEXTUREACCESS_TARGET, VGA_H_RES, VGA_V_RES);
-        if (!txr)
-        {
-            printf("Texture creation failed: %s\n", SDL_GetError());
-        }
-    }
-
-    void initFPS()
-    {
-        startTick = SDL_GetPerformanceCounter();
-        frameCnt = 0;
-    }
-
-    void calcFPS()
-    {
-        uint64_t endTick = SDL_GetPerformanceCounter();
-        double duration = ((double)(endTick - startTick)) / SDL_GetPerformanceFrequency();
-        double fps = (double)frameCnt / duration;
-        std::cout << "Frames per second: " << fps << std::endl;
-    }
-
-    void initFB()
-    {
-        for (int cnt = 0; cnt < VGA_V_RES; ++cnt)
-            for (int j = 0; j < VGA_H_RES; ++j)
-            {
-                auto p = &fb[cnt * VGA_H_RES + j];
-                p->a = 0xFF;
-                p->b = 0xFF;
-                p->g = 0x00;
-                p->r = 0x00;
-            }
-    }
-
-    // now dont support break code
-    void encode(int sdlCode, KdbCodeType codeType = K_MAKE)
-    {
-        int cnt = 0;
-        auto info = keymap[sdlCode];
-        switch (info.type)
-        {
-        case K_UNKNOWN:
-        {
-            break;
-        }
-        case K_NORMAL:
-        {
-            if (codeType == K_BREAK)
-            {
-                kdbCode[cnt++] = 0xF0;
-            }
-            kdbCode[cnt++] = info.code;
-            break;
-        }
-        case K_EXTENDED:
-        {
-            kdbCode[cnt++] = 0xE0;
-            if (codeType == K_BREAK)
-            {
-                kdbCode[cnt++] = 0xF0;
-            }
-            kdbCode[cnt++] = info.code;
-            break;
-        }
-        case K_NUMLOCK:
-        {
-            // assumes num lock is always active
-            if (codeType == K_MAKE)
-            {
-                // fake shift press
-                kdbCode[cnt++] = 0xE0;
-                kdbCode[cnt++] = 0x12;
-                kdbCode[cnt++] = 0xE0;
-                kdbCode[cnt++] = info.code;
-            }
-            else
-            {
-                kdbCode[cnt++] = 0xE0;
-                kdbCode[cnt++] = 0xF0;
-                kdbCode[cnt++] = info.code;
-                // fake shift release
-                kdbCode[cnt++] = 0xE0;
-                kdbCode[cnt++] = 0xF0;
-                kdbCode[cnt++] = 0x12;
-            }
-            break;
-        }
-        case K_SHIFT:
-        {
-            SDL_Keymod mod = SDL_GetModState();
-            if (codeType == K_MAKE)
-            {
-                // fake shift release
-                if (mod & KMOD_LSHIFT)
-                {
-                    kdbCode[cnt++] = 0xE0;
-                    kdbCode[cnt++] = 0xF0;
-                    kdbCode[cnt++] = 0x12;
-                }
-                if (mod & KMOD_RSHIFT)
-                {
-                    kdbCode[cnt++] = 0xE0;
-                    kdbCode[cnt++] = 0xF0;
-                    kdbCode[cnt++] = 0x59;
-                }
-                kdbCode[cnt++] = 0xE0;
-                kdbCode[cnt++] = info.code;
-            }
-            else
-            {
-                kdbCode[cnt++] = 0xE0;
-                kdbCode[cnt++] = 0xF0;
-                kdbCode[cnt++] = info.code;
-                // fake shift press
-                if (mod & KMOD_RSHIFT)
-                {
-                    kdbCode[cnt++] = 0xE0;
-                    kdbCode[cnt++] = 0x59;
-                }
-                if (mod & KMOD_LSHIFT)
-                {
-                    kdbCode[cnt++] = 0xE0;
-                    kdbCode[cnt++] = 0x12;
-                }
-            }
-            break;
-        }
-        }
-    }
-
-    bool step()
-    {
-        SDL_Event event;
-        if (SDL_PollEvent(&event))
-        {
-            if (event.type == SDL_QUIT)
-            {
-                return false;
-            }
-            const Uint8 *kdbState = SDL_GetKeyboardState(NULL);
-            int keyLen = sizeof(keymap) / sizeof(KdbInfo);
-            for (int i = 0; i < keyLen; ++i)
-            {
-                if (kdbState[i])
-                {
-                    std::cout << i << std::endl;
-                    encode(i);
-                    // ps2_read(kdbCode[0]);
-                }
-            }
-        }
-
-        SDL_UpdateTexture(txr, NULL, fb, VGA_H_RES * sizeof(Pixel));
-        SDL_RenderClear(rdr);
-        SDL_RenderCopy(rdr, txr, NULL, NULL);
-        SDL_RenderPresent(rdr);
-        frameCnt++;
-        return true;
-    }
-
-    void release()
-    {
-        SDL_DestroyTexture(txr);
-        SDL_DestroyRenderer(rdr);
-        SDL_DestroyWindow(win);
-        SDL_Delay(500);
-        SDL_Quit();
-    }
+    MediaWindow();
+    void initFPS();
+    void calcFPS();
+    void initFB();
+    void initImage();
+    void initVideo();
+    void encode(int sdlCode, KdbCodeType codeType = K_MAKE);
+    bool step(std::string app);
+    void release(std::string app);
 
 private:
     SDL_Window *win = nullptr;
     SDL_Renderer *rdr = nullptr;
     SDL_Texture *txr = nullptr;
+    SDL_Surface *srf = nullptr;
     clock_t start;
     uint8_t kdbCode[6] = {0};
     Pixel fb[VGA_H_RES * VGA_V_RES];
     uint64_t startTick = 0;
     uint64_t frameCnt = 0;
+    bool appInit = false;
 };

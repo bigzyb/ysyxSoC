@@ -2,3 +2,7 @@
 build
 *.log
 *.wave
+*.out
+*.gtkw
+ysyx_*.v
+rt-thread

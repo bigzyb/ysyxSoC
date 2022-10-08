@@ -2,11 +2,11 @@
 #include <iostream>
 
 #include <SDL2/SDL.h>
-#include "cxxopts.hpp"
-
-#include <Emulator.hpp>
-
 #include "verilated.h"
+#include "cxxopts.hpp"
+#include "rang.hpp"
+
+#include "Emulator.h"
 
 static Emulator *emu = nullptr;
 cxxopts::Options args("emu", "OSCPU Seasion 4 SoC Emulator");
@@ -35,6 +35,7 @@ void parseArgs(int argc, char *argv[])
     Verilated::commandArgs(argc, argv);
 }
 
+extern void env_init();
 int main(int argc, char *argv[])
 {
     env_init();
@@ -48,7 +49,7 @@ int main(int argc, char *argv[])
     }
 
     emu = new Emulator(res);
-    std::cout << "[verilator]start simulating ..." << std::endl;
+    std::cout << rang::fg::yellow << "[verilator]start simulating ..." << rang::fg::reset << std::endl;
     emu->runSim();
 
     return 0;

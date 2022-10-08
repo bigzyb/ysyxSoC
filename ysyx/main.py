@@ -5,7 +5,8 @@ import argparse
 
 stud_id = '040228'  # the last six digits of the student ID
 app_type = ['flash', 'mem']
-app = [('hello', 40), ('memtest', 70), ('rtthread', 450), ('muldiv', 60)]
+app = [('hello', 40, 'cmd'), ('memtest', 140, 'cmd'),
+       ('rtthread', 1000, 'cmd'), ('muldiv', 60, 'cmd'), ('kdb', 1000, 'gui')]
 
 
 def run_stand_check():
@@ -42,13 +43,17 @@ def run_test(val):
                 cmd = 'make -C sim SOC_APP_TYPE=' + i + ' SOC_APP_NAME=' + j[
                     0] + ' SOC_SIM_TIME=' + str(j[1])
                 if val[2] == 'gui' or val[2] == 'cmd':
-                    cmd += ' SOC_SIM_MODE=' + val[2]
+                    if val[2] == j[2]:
+                        cmd += ' SOC_SIM_MODE=' + val[2]
+                    else:
+                        print(j[0] + ' dont support ' + val[2] + ' mode')
+                        return
                 else:
                     print('error run mode, need to enter "cmd" or "gui"')
                     return
 
                 if val[3] == 'no-wave' or val[3] == 'wave':
-                    if (val[3] == 'wave'):
+                    if val[3] == 'wave':
                         cmd += ' SOC_WAV_MODE=-d'
                 else:
                     print('error wave mode, need to enter "no-wave" or "wave"')
@@ -62,9 +67,10 @@ def run_test(val):
 def run_reg_test():
     for i in app_type:
         for j in app:
-            os.system('make -C sim SOC_APP_TYPE=' + i + ' SOC_APP_NAME=' +
-                      j[0] + ' SOC_SIM_TIME=' + str(j[1]) +
-                      ' SOC_SIM_MODE=cmd test')
+            if j[2] == 'cmd':
+                os.system('make -C sim SOC_APP_TYPE=' + i + ' SOC_APP_NAME=' +
+                          j[0] + ' SOC_SIM_TIME=' + str(j[1]) +
+                          ' SOC_SIM_MODE=cmd test')
 
 
 def submit_code():
@@ -75,6 +81,18 @@ def submit_code():
 
 def run_soc_comp():
     os.system('make -C soc all')
+
+
+def gen_test_prog():
+    os.chdir('prog/src')
+    for i in app_type:
+        for j in app:
+            print('i: ' + i + ' j: ' + j[0])
+            os.system("sed -i \"s/\(^APP_TYPE\s\+=\s\+\)'[a-z]\+'/\\1'" + i +
+                      "'/\" run.py")
+            os.system("sed -i \"s/\(^APP_NAME\s\+=\s\+\)'[a-z]\+'/\\1'" +
+                      j[0] + "'/\" run.py")
+            os.system('./run.py')
 
 
 parser = argparse.ArgumentParser(description='OSCPU Season 4 SoC Test')
@@ -104,7 +122,8 @@ parser.add_argument('-fc',
 parser.add_argument(
     '-t',
     '--test',
-    help='Example: ./main.py -t [flash|mem] [hello|memtest|rtthread|muldiv] ' +
+    help=
+    'Example: ./main.py -t [flash|mem] [hello|memtest|rtthread|muldiv|kdb] ' +
     '[cmd|gui] [no-wave|wave]. note: some programs dont support gui mode,' +
     ' so need to set right mode carefully',
     nargs=4)
@@ -129,6 +148,11 @@ parser.add_argument('-y',
                     help='compile ysyxSoCFull framework[NOT REQUIRED]',
                     action='store_true')
 
+parser.add_argument('-p',
+                    '--prog',
+                    help='compile all test prog[NOT REQUIRED]',
+                    action='store_true')
+
 args = parser.parse_args()
 if args.stand:
     run_stand_check()
@@ -143,5 +167,7 @@ elif args.submit:
     submit_code()
 elif args.ysyx:
     run_soc_comp()
+elif args.prog:
+    gen_test_prog()
 else:
     run_test(args.test)
